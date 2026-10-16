@@ -1,0 +1,8 @@
+.env
+certs/
+uploads/
+*.log
+test_db.php
+hash.php
+.gitignore/.gitignore.txt
+Deleted parts/

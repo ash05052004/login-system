@@ -1,0 +1,374 @@
+/* Pricing Settings Page Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* Main Container */
+.pricing-container {
+    max-width: 900px;
+    width: 100%;
+    margin: 80px auto 50px;
+    padding: 30px;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    border: 2px solid #667eea;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    color: white;
+}
+
+/* Header */
+.pricing-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #667eea;
+}
+
+.pricing-header h1 {
+    color: #ffd700;
+    font-size: 28px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.back-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-size: 14px;
+    transition: all 0.3s;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.back-btn:hover {
+    background: #667eea;
+    transform: translateY(-2px);
+}
+
+/* Message */
+.success-message {
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.success-message.success {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+    border: 1px solid #28a745;
+}
+
+.success-message.reset {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+    border: 1px solid #ffc107;
+}
+
+.success-message.error {
+    background: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+    border: 1px solid #dc3545;
+}
+
+/* Pricing Card */
+.pricing-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 15px;
+    padding: 25px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pricing-card h2 {
+    color: #ffd700;
+    margin-bottom: 20px;
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Table Styles */
+.pricing-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+.pricing-table th {
+    text-align: left;
+    padding: 15px 10px;
+    color: #ffd700;
+    font-size: 16px;
+    border-bottom: 2px solid #667eea;
+}
+
+.pricing-table td {
+    padding: 15px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pricing-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Room Type Icon */
+.room-icon {
+    font-size: 20px;
+    margin-right: 8px;
+}
+
+/* Availability Toggle Button */
+.availability-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 2px solid transparent;
+    min-width: 120px;
+    justify-content: center;
+}
+
+.availability-toggle.available {
+    background: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+    border-color: #28a745;
+}
+
+.availability-toggle.available:hover {
+    background: #28a745;
+    color: white;
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+}
+
+.availability-toggle.unavailable {
+    background: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+    border-color: #dc3545;
+}
+
+.availability-toggle.unavailable:hover {
+    background: #dc3545;
+    color: white;
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+}
+
+.availability-toggle span {
+    font-size: 16px;
+}
+
+/* Price Input */
+.price-input {
+    width: 120px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    font-size: 15px;
+    transition: all 0.3s;
+}
+
+.price-input:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.price-input:hover {
+    border-color: rgba(102, 126, 234, 0.5);
+}
+
+/* Action Buttons */
+.action-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+}
+
+.edit-btn {
+    color: #ffd700;
+}
+
+.edit-btn:hover {
+    background: rgba(255, 215, 0, 0.2);
+    transform: scale(1.1);
+}
+
+/* Legend Box */
+.legend-box {
+    margin: 25px 0 15px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    display: flex;
+    gap: 25px;
+    flex-wrap: wrap;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+}
+
+.legend-icon {
+    font-size: 18px;
+}
+
+/* Button Group */
+.button-group {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-save {
+    background: #28a745;
+    color: white;
+}
+
+.btn-save:hover {
+    background: #218838;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+}
+
+.btn-reset {
+    background: #ffc107;
+    color: black;
+}
+
+.btn-reset:hover {
+    background: #e0a800;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(255, 193, 7, 0.3);
+}
+
+/* Footer */
+.pricing-footer {
+    margin-top: 30px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 20px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .pricing-container {
+        padding: 20px;
+        margin: 100px auto 30px;
+    }
+
+    .pricing-table th,
+    .pricing-table td {
+        padding: 12px 5px;
+        font-size: 13px;
+    }
+
+    .availability-toggle {
+        min-width: 100px;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .price-input {
+        width: 90px;
+        padding: 6px;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .legend-box {
+        flex-direction: column;
+        gap: 10px;
+    }
+}
+
+/* Tooltip */
+[data-tooltip] {
+    position: relative;
+    cursor: help;
+}
+
+[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 10;
+    margin-bottom: 5px;
+}
