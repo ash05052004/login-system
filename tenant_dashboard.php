@@ -70,31 +70,67 @@ function getStatusText($status) {
 if (isset($_POST['upload_receipt'])) {
     $month = intval($_POST['month']);
     $year = intval($_POST['year']);
-    
+
     $checkStmt = $pdo->prepare("SELECT status FROM payments WHERE user_id = ? AND year = ? AND month = ?");
     $checkStmt->execute([$user_id, $year, $month]);
     $existing = $checkStmt->fetch();
-    
+
     if ($existing && $existing['status'] == 'verified') {
         header("Location: tenant_dashboard.php?year=$current_year&msg=locked");
         exit();
     }
-    
+
     if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] == 0) {
-        $target_dir = "uploads/";
-        if (!file_exists($target_dir)) mkdir($target_dir, 0777, true);
-        $file_extension = pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION);
-        $receipt_image = $target_dir . 'receipt_' . $user_id . '_' . $year . '_' . $month . '.' . $file_extension;
-        move_uploaded_file($_FILES['receipt']['tmp_name'], $receipt_image);
+        $file_extension = strtolower(pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION));
+
+        if ($file_extension !== 'png') {
+            header("Location: tenant_dashboard.php?year=$current_year&msg=invalid_format");
+            exit();
+        }
+
+        $filename = 'receipt_' . $user_id . '_' . $year . '_' . $month . '_' . time() . '.png';
+        $supabase_url = rtrim(env('SUPABASE_URL', ''), '/');
+        $supabase_key = env('SUPABASE_SERVICE_KEY', '');
+
+        if ($supabase_url === '' || $supabase_key === '') {
+            header("Location: tenant_dashboard.php?year=$current_year&msg=storage_error");
+            exit();
+        }
+
+        $file_data = file_get_contents($_FILES['receipt']['tmp_name']);
+
+        $ch = curl_init($supabase_url . '/storage/v1/object/receipts/' . $filename);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $file_data,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $supabase_key,
+                'Content-Type: image/png',
+                'x-upsert: true',
+            ],
+        ]);
+        $upload_response = curl_exec($ch);
+        $upload_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($upload_code < 200 || $upload_code >= 300) {
+            error_log("Supabase upload failed ($upload_code): " . $upload_response);
+            header("Location: tenant_dashboard.php?year=$current_year&msg=storage_error");
+            exit();
+        }
+
+        $receipt_image = $supabase_url . '/storage/v1/object/public/receipts/' . $filename;
     } else {
         $receipt_image = null;
     }
-    
+
     $stmt = $pdo->prepare("INSERT INTO payments (user_id, year, month, status, receipt_image) 
                            VALUES (?, ?, ?, 'pending', ?)
                            ON DUPLICATE KEY UPDATE status = 'pending', receipt_image = ?");
     $stmt->execute([$user_id, $year, $month, $receipt_image, $receipt_image]);
-    
+
     require_once 'notification_helper.php';
     $owner_stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
     $owner_stmt->execute();
@@ -103,7 +139,7 @@ if (isset($_POST['upload_receipt'])) {
         $monthName = date('F', mktime(0, 0, 0, $month, 1));
         notifyReceiptUploaded($owner_row['id'], $tenant['email'], $total_amount, "$monthName $year");
     }
-    
+
     header("Location: tenant_dashboard.php?year=$current_year&msg=uploaded");
     exit();
 }
@@ -112,19 +148,19 @@ if (isset($_POST['send_message'])) {
     $message = trim($_POST['message']);
     $subject = 'Message from Tenant';
     $sender_id = $_SESSION['user_id'];
-    
+
     $stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
     $stmt->execute();
     $owner = $stmt->fetch();
     $receiver_id = $owner ? $owner['id'] : 1;
-    
+
     $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, sender_role, message_type, subject, message) 
                            VALUES (?, ?, 'tenant', 'message', ?, ?)");
     $stmt->execute([$sender_id, $receiver_id, $subject, $message]);
-    
+
     require_once 'notification_helper.php';
     notifyNewMessage($receiver_id, $_SESSION['username'], $subject);
-    
+
     header("Location: tenant_dashboard.php?year=$current_year&msg=message_sent");
     exit();
 }
@@ -133,19 +169,19 @@ if (isset($_POST['file_complaint'])) {
     $complaint = trim($_POST['complaint']);
     $subject = 'Complaint: ' . substr($complaint, 0, 50);
     $sender_id = $_SESSION['user_id'];
-    
+
     $stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
     $stmt->execute();
     $owner = $stmt->fetch();
     $receiver_id = $owner ? $owner['id'] : 1;
-    
+
     $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, sender_role, message_type, subject, message) 
                            VALUES (?, ?, 'tenant', 'complaint', ?, ?)");
     $stmt->execute([$sender_id, $receiver_id, $subject, $complaint]);
-    
+
     require_once 'notification_helper.php';
     notifyNewComplaint($receiver_id, $_SESSION['username'], $subject);
-    
+
     header("Location: tenant_dashboard.php?year=$current_year&msg=complaint_filed");
     exit();
 }
@@ -168,6 +204,8 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'message_sent') $message = '✅ Message sent to owner';
     if ($_GET['msg'] == 'complaint_filed') $message = '✅ Complaint filed successfully';
     if ($_GET['msg'] == 'locked') $message = '🔒 This month is verified and cannot be changed';
+    if ($_GET['msg'] == 'invalid_format') $message = '❌ Only PNG files are allowed';
+    if ($_GET['msg'] == 'storage_error') $message = '❌ Upload failed. Please try again.';
 }
 ?>
 
@@ -851,10 +889,10 @@ body {
         <form method="POST" enctype="multipart/form-data" id="uploadForm">
           <div class="upload-area" id="uploadArea" onclick="triggerFilePick()">
             <span class="upload-icon" id="uploadIcon">📷</span>
-            <span class="upload-text" id="uploadText">Click to upload GCash/Bank Receipt</span>
+            <span class="upload-text" id="uploadText">Click to upload GCash/Bank Receipt (PNG only)</span>
             <img id="uploadPreview" alt="Preview">
           </div>
-          <input type="file" id="receiptFile" name="receipt" style="display: none;" accept="image/*" onchange="showFileName()">
+          <input type="file" id="receiptFile" name="receipt" style="display: none;" accept="image/png" onchange="showFileName()">
           <input type="hidden" name="month" id="upload_form_month" value="<?php echo $currentMonth; ?>">
           <input type="hidden" name="year" id="upload_form_year" value="<?php echo $currentYear; ?>">
           <button type="submit" name="upload_receipt" class="upload-btn" id="uploadBtn">📤 UPLOAD RECEIPT</button>
@@ -1043,7 +1081,7 @@ function updateUploadUI() {
     document.getElementById('uploadText').style.display = 'inline';
     document.getElementById('uploadPreview').style.display = 'none';
     document.getElementById('uploadPreview').src = '';
-    document.getElementById('uploadText').textContent = 'Click to upload GCash/Bank Receipt';
+    document.getElementById('uploadText').textContent = 'Click to upload GCash/Bank Receipt (PNG only)';
     
     const status = paymentStatuses[uploadMonth] || 'pending';
     const badge = document.getElementById('statusBadge');
@@ -1129,7 +1167,7 @@ function showReceiptPanel(cell) {
         downloadBtn.onclick = function() { 
             const link = document.createElement('a'); 
             link.href = receiptPath; 
-            link.download = 'receipt_' + monthName + '_' + year + '.jpg'; 
+            link.download = 'receipt_' + monthName + '_' + year + '.png'; 
             link.click(); 
         };
     } else {
@@ -1162,7 +1200,7 @@ function downloadReceipt() {
     if (img.src && img.style.display !== 'none') {
         const link = document.createElement('a');
         link.href = img.src;
-        link.download = 'receipt.jpg';
+        link.download = 'receipt.png';
         link.click();
     }
 }
