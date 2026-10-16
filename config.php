@@ -42,15 +42,31 @@ $username = env('DB_USER');
 $password = env('DB_PASS', '');
 
 $port = env('DB_PORT', '4000');
-$ssl_ca = __DIR__ . '/' . env('DB_SSL_CA', '');
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ];
 
-if (env('DB_SSL_CA', '') !== '' && file_exists($ssl_ca)) {
-    $options[PDO::MYSQL_ATTR_SSL_CA] = $ssl_ca;
+// Local: use certs/tidb-ca.pem
+// Render: env var DB_SSL_CA_PEM contains the cert; write to /tmp
+$ssl_ca_path = '';
+
+$pem_from_env = env('DB_SSL_CA_PEM', '');
+if ($pem_from_env !== '') {
+    $ssl_ca_path = sys_get_temp_dir() . '/tidb-ca.pem';
+    if (!file_exists($ssl_ca_path)) {
+        file_put_contents($ssl_ca_path, $pem_from_env);
+    }
+} else {
+    $local_cert = __DIR__ . '/' . env('DB_SSL_CA', 'certs/tidb-ca.pem');
+    if (file_exists($local_cert)) {
+        $ssl_ca_path = $local_cert;
+    }
+}
+
+if ($ssl_ca_path !== '') {
+    $options[PDO::MYSQL_ATTR_SSL_CA] = $ssl_ca_path;
 }
 
 try {
