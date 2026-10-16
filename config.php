@@ -103,8 +103,10 @@ function csrf_check() {
 }
 
 // ===== reCAPTCHA keys (from .env) =====
-define('RECAPTCHA_SITE_KEY',   env('RECAPTCHA_SITE_KEY'));
-define('RECAPTCHA_SECRET_KEY', env('RECAPTCHA_SECRET_KEY'));
+// Login does not use reCAPTCHA. Signup uses it.
+// Empty defaults so missing vars don't kill the app.
+define('RECAPTCHA_SITE_KEY',   env('RECAPTCHA_SITE_KEY', ''));
+define('RECAPTCHA_SECRET_KEY', env('RECAPTCHA_SECRET_KEY', ''));
 
 // Get unread message counts for a user
 function getUnreadCounts($pdo, $user_id) {
