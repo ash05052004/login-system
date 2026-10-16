@@ -91,6 +91,10 @@ if (isset($_POST['mark_partial'])) {
                            ON DUPLICATE KEY UPDATE status = 'partial', payment_date = NOW(), amount_paid = ?, amount_due = ?, balance = ?, is_partial = 1");
     $stmt->execute([$userId, $year, $month, $amount_paid, $amount_due, $balance, $amount_paid, $amount_due, $balance]);
     
+    require_once 'notification_helper.php';
+    $monthName = date('F', mktime(0, 0, 0, $month, 1));
+    notifyPartialPayment($userId, $amount_paid, $balance, "$monthName $year");
+    
     header("Location: owner_dashboard.php?year=$current_year&filter=$filter&msg=partial");
     exit();
 }
@@ -117,23 +121,17 @@ if ($filter == 'inactive') {
 $stmt->execute();
 $allTenants = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// ============================================================
-// FIXED: Group tenants by room_number column (new system)
-// ============================================================
 $tenantsByRoom = [];
 foreach ($allTenants as $tenant) {
     $room = '';
 
-    // Priority 1: room_number column (new system — account-name only)
     if (!empty($tenant['room_number'])) {
         $room = strtoupper(trim($tenant['room_number']));
     }
-    // Fallback: parse from username (legacy data with A1luffy@tenant)
     elseif (preg_match('/^(A[1-7]|B[1-7])/i', $tenant['username'], $matches)) {
         $room = strtoupper($matches[1]);
     }
 
-    // Only group if it's a valid room (A1–A7 or B1–B7)
     if ($room && preg_match('/^[AB][1-7]$/', $room)) {
         if (!isset($tenantsByRoom[$room])) {
             $tenantsByRoom[$room] = [];
