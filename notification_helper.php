@@ -91,6 +91,19 @@ function notifyReceiptUploaded($owner_id, $tenant_email, $amount, $month_name) {
 }
 
 // ============================================
+// PARTIAL PAYMENT NOTIFICATION
+// ============================================
+function notifyPartialPayment($tenant_id, $amount_paid, $balance, $month_name) {
+    return sendTelegram(
+        $tenant_id,
+        '📩 Partial Payment Received',
+        "We received ₱" . number_format($amount_paid, 2) . " for $month_name.\n\n" .
+        "Remaining balance: ₱" . number_format($balance, 2) . "\n\n" .
+        "Please settle the balance on or before the next due date."
+    );
+}
+
+// ============================================
 // APPOINTMENT NOTIFICATIONS
 // ============================================
 
