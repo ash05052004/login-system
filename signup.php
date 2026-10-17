@@ -4,7 +4,6 @@ require_once 'config.php';
 $error = '';
 $success = '';
 
-// LOCALHOST reCAPTCHA keys
 $RECAPTCHA_SITE_KEY = RECAPTCHA_SITE_KEY;
 $RECAPTCHA_SECRET_KEY = RECAPTCHA_SECRET_KEY;
 
@@ -14,10 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $confirm_password = $_POST['confirm_password'] ?? '';
     $recaptcha_response = $_POST['g-recaptcha-response'] ?? '';
 
-    // Tenant if the account name ends with @tenant.
     $is_tenant = (strtolower(substr($username, -7)) === '@tenant');
-
-    // Email column mirrors the account name (kept for compatibility).
     $email = $username;
 
     if (empty($recaptcha_response)) {
@@ -72,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                              FROM users
                              WHERE room_number = ?
                              AND role = 'tenant'
+                             AND tenant_status = 'active'
                              AND is_deleted = 0"
                         );
                         $stmt->execute([$room]);
@@ -88,14 +85,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
             if (empty($error)) {
                 $stmt = $pdo->prepare(
-                    "SELECT id
+                    "SELECT id, tenant_status
                      FROM users
                      WHERE LOWER(username) = LOWER(?)"
                 );
                 $stmt->execute([$username]);
+                $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-                    $error = 'Account name already exists. Please choose another one.';
+                if ($existing) {
+                    if ($existing['tenant_status'] === 'declined') {
+                        $error = 'This account was declined by the owner. Please contact them.';
+                    } else {
+                        $error = 'Account name already exists. Please choose another one.';
+                    }
                 } else {
                     if ($is_tenant) {
                         $role = 'tenant';
@@ -126,8 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $stmt = $pdo->prepare(
                             "INSERT INTO users
                             (username, email, password, role, price_option,
-                             rent_amount, room_number, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())"
+                             rent_amount, room_number, tenant_status, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NOW())"
                         );
 
                         $stmt->execute([
@@ -139,6 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             $price_option,
                             $room
                         ]);
+
+                        $success = 'Registration successful! Your account is pending owner approval. You will be able to log in once approved.';
                     } else {
                         $stmt = $pdo->prepare(
                             "INSERT INTO users
@@ -152,9 +156,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             $hashed_password,
                             $role
                         ]);
-                    }
 
-                    $success = 'Registration successful! You can now login.';
+                        $success = 'Registration successful! You can now login.';
+                    }
                 }
             }
         }

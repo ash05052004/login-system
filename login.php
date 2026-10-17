@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = 'Please enter account name and password.';
     } else {
         $stmt = $pdo->prepare(
-            "SELECT id, username, password, role
+            "SELECT id, username, password, role, tenant_status
              FROM users
              WHERE LOWER(username) = LOWER(?)"
         );
@@ -41,28 +41,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && password_verify($password, $user['password'])) {
-            $pdo->prepare(
-                "DELETE FROM login_attempts
-                 WHERE username = ? OR ip_address = ?"
-            )->execute([$username, $ip]);
 
-            session_regenerate_id(true);
+            // Tenant approval gate
+            if ($user['role'] === 'tenant') {
+                if ($user['tenant_status'] === 'pending') {
+                    $error = 'Your account is awaiting owner approval. Please try again later.';
+                } elseif ($user['tenant_status'] === 'declined') {
+                    $error = 'Your account was declined. Please contact the owner.';
+                }
+            }
 
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['role'] = $user['role'];
+            if (empty($error)) {
+                $pdo->prepare(
+                    "DELETE FROM login_attempts
+                     WHERE username = ? OR ip_address = ?"
+                )->execute([$username, $ip]);
 
-            if ($user['role'] == 'owner') {
-                header('Location: owner_dashboard.php');
-                exit();
-            } elseif ($user['role'] == 'tenant') {
-                header('Location: tenant_dashboard.php');
-                exit();
-            } elseif ($user['role'] == 'appointment') {
-                header('Location: appointment_dashboard.php');
-                exit();
+                session_regenerate_id(true);
+
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['role'] = $user['role'];
+
+                if ($user['role'] == 'owner') {
+                    header('Location: owner_dashboard.php');
+                    exit();
+                } elseif ($user['role'] == 'tenant') {
+                    header('Location: tenant_dashboard.php');
+                    exit();
+                } elseif ($user['role'] == 'appointment') {
+                    header('Location: appointment_dashboard.php');
+                    exit();
+                } else {
+                    $error = 'Invalid account role. Please contact the owner.';
+                }
             } else {
-                $error = 'Invalid account role. Please contact the owner.';
+                $pdo->prepare(
+                    "INSERT INTO login_attempts
+                     (username, ip_address, attempted_at)
+                     VALUES (?, ?, NOW())"
+                )->execute([$username, $ip]);
             }
         } else {
             $error = 'Invalid account name or password.';

@@ -10,7 +10,7 @@ require_once 'config.php';
 if (isset($_GET['set_inactive']) || isset($_GET['set_active'])) {
     csrf_check();
 }
-if (isset($_POST['verify_payment']) || isset($_POST['mark_partial']) || isset($_POST['unverify_payment']) || isset($_POST['update_capacity'])) {
+if (isset($_POST['verify_payment']) || isset($_POST['mark_partial']) || isset($_POST['unverify_payment']) || isset($_POST['update_capacity']) || isset($_POST['approve_tenant']) || isset($_POST['decline_tenant'])) {
     csrf_check();
 }
 
@@ -20,6 +20,9 @@ $filter = isset($_GET['filter']) ? $_GET['filter'] : 'active';
 $counts = getUnreadCounts($pdo, $_SESSION['user_id']);
 $message_unread = $counts['message'];
 $complaint_unread = $counts['complaint'];
+
+$stmt = $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'tenant' AND tenant_status = 'pending'");
+$pending_count = (int) $stmt->fetchColumn();
 
 if (isset($_POST['update_capacity'])) {
     $room_number = $_POST['room_number'];
@@ -32,6 +35,26 @@ if (isset($_POST['update_capacity'])) {
     $stmt = $pdo->prepare("UPDATE rooms SET price_option = ?, max_occupancy = ? WHERE room_number = ?");
     $stmt->execute([$price_option, $max_occupancy, $room_number]);
     header("Location: owner_dashboard.php?year=$current_year&filter=$filter&msg=capacity_updated");
+    exit();
+}
+
+if (isset($_POST['approve_tenant'])) {
+    $userId = (int) $_POST['user_id'];
+    $stmt = $pdo->prepare("UPDATE users SET tenant_status = 'active' WHERE id = ? AND role = 'tenant' AND tenant_status = 'pending'");
+    $stmt->execute([$userId]);
+    require_once 'notification_helper.php';
+    sendTelegram($userId, '✅ Account Approved', "Your account has been approved. You can now log in to your tenant dashboard.");
+    header("Location: owner_dashboard.php?year=$current_year&filter=pending&msg=tenant_approved");
+    exit();
+}
+
+if (isset($_POST['decline_tenant'])) {
+    $userId = (int) $_POST['user_id'];
+    $stmt = $pdo->prepare("UPDATE users SET tenant_status = 'declined' WHERE id = ? AND role = 'tenant' AND tenant_status = 'pending'");
+    $stmt->execute([$userId]);
+    require_once 'notification_helper.php';
+    sendTelegram($userId, '❌ Account Declined', "Your account request was declined by the owner. Please contact them if you have questions.");
+    header("Location: owner_dashboard.php?year=$current_year&filter=pending&msg=tenant_declined");
     exit();
 }
 
@@ -113,7 +136,9 @@ if (isset($_POST['unverify_payment'])) {
     exit();
 }
 
-if ($filter == 'inactive') {
+if ($filter == 'pending') {
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE role = 'tenant' AND tenant_status = 'pending' ORDER BY created_at ASC");
+} elseif ($filter == 'inactive') {
     $stmt = $pdo->prepare("SELECT * FROM users WHERE role = 'tenant' AND tenant_status = 'inactive' ORDER BY username ASC");
 } else {
     $stmt = $pdo->prepare("SELECT * FROM users WHERE role = 'tenant' AND is_deleted = 0 AND tenant_status = 'active' ORDER BY username ASC");
@@ -124,14 +149,12 @@ $allTenants = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $tenantsByRoom = [];
 foreach ($allTenants as $tenant) {
     $room = '';
-
     if (!empty($tenant['room_number'])) {
         $room = strtoupper(trim($tenant['room_number']));
     }
     elseif (preg_match('/^(A[1-7]|B[1-7])/i', $tenant['username'], $matches)) {
         $room = strtoupper($matches[1]);
     }
-
     if ($room && preg_match('/^[AB][1-7]$/', $room)) {
         if (!isset($tenantsByRoom[$room])) {
             $tenantsByRoom[$room] = [];
@@ -193,6 +216,8 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'capacity_updated') $message = 'Room capacity updated successfully';
     if ($_GET['msg'] == 'inactive') $message = 'Tenant moved to inactive';
     if ($_GET['msg'] == 'active') $message = 'Tenant reactivated';
+    if ($_GET['msg'] == 'tenant_approved') $message = 'Tenant approved and activated';
+    if ($_GET['msg'] == 'tenant_declined') $message = 'Tenant signup declined';
 }
 ?>
 <!DOCTYPE html>
@@ -440,6 +465,33 @@ body {
 }
 .action-link:hover { transform: scale(1.15); }
 
+.pending-action {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border: 1px solid;
+  border-radius: 2px;
+  cursor: pointer;
+  margin: 0 3px;
+  background: transparent;
+  transition: all .2s ease;
+}
+.pending-action.approve { color: #367344; border-color: #367344; }
+.pending-action.approve:hover { background: #367344; color: var(--bg-card); }
+.pending-action.decline { color: var(--clay); border-color: var(--clay); }
+.pending-action.decline:hover { background: var(--clay); color: var(--bg-card); }
+
+.pending-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ink-soft);
+  font-style: italic;
+  font-size: 0.95rem;
+}
+
 .modal {
   display: none;
   position: fixed;
@@ -490,6 +542,45 @@ body {
 }
 .modal-close:hover { color: var(--clay); }
 
+.confirm-body {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.confirm-body strong { color: var(--ink); }
+
+.modal-save {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 13px;
+  background: var(--brass);
+  color: var(--bg-card);
+  border: 1px solid var(--brass);
+  border-radius: 2px;
+  cursor: pointer;
+  margin-top: 14px;
+}
+.modal-save:hover { background: transparent; color: var(--brass); }
+.modal-save.decline { background: var(--clay); border-color: var(--clay); color: var(--bg-card); }
+.modal-save.decline:hover { background: transparent; color: var(--clay); }
+.modal-cancel {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: none;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
 .modal-option {
   display: flex;
   align-items: center;
@@ -507,34 +598,6 @@ body {
 .modal-option:hover { border-color: var(--brass-light); }
 .modal-option.selected { border-color: var(--brass); background: rgba(107,79,42,0.1); }
 .modal-option input[type="radio"] { accent-color: var(--brass); }
-.modal-save {
-  width: 100%;
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 13px;
-  background: var(--brass);
-  color: var(--bg-card);
-  border: 1px solid var(--brass);
-  border-radius: 2px;
-  cursor: pointer;
-  margin-top: 14px;
-}
-.modal-save:hover { background: transparent; color: var(--brass); }
-.modal-cancel {
-  width: 100%;
-  font-family: var(--font-display);
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 10px;
-  background: transparent;
-  color: var(--ink-soft);
-  border: none;
-  cursor: pointer;
-  margin-top: 6px;
-}
 
 .panel-bills { font-size: 0.9rem; }
 .panel-bill-item {
@@ -641,12 +704,32 @@ body {
   </div>
 </div>
 
+<div class="modal" id="tenantActionModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <h3 id="tenantActionTitle">Confirm</h3>
+        <p class="modal-sub" id="tenantActionSub"></p>
+      </div>
+      <button class="modal-close" onclick="closeTenantModal()">✕</button>
+    </div>
+    <div class="confirm-body" id="tenantActionBody"></div>
+    <form method="POST" id="tenantActionForm">
+      <input type="hidden" name="token" value="<?php echo csrf_token(); ?>">
+      <input type="hidden" name="user_id" id="tenantActionUserId">
+      <button type="submit" class="modal-save" id="tenantActionSubmit" name="approve_tenant" value="1">Approve</button>
+      <button type="button" class="modal-cancel" onclick="closeTenantModal()">Cancel</button>
+    </form>
+  </div>
+</div>
+
 <div class="navbar">
   <h2>✦ OWNER DASHBOARD</h2>
   <div class="nav-links">
     <span class="welcome">Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?></span>
     <a href="?year=<?php echo $current_year; ?>&filter=active" class="<?php echo $filter == 'active' ? 'active' : ''; ?>">Active</a>
     <a href="?year=<?php echo $current_year; ?>&filter=inactive" class="<?php echo $filter == 'inactive' ? 'active' : ''; ?>">Inactive</a>
+    <a href="?year=<?php echo $current_year; ?>&filter=pending" class="<?php echo $filter == 'pending' ? 'active' : ''; ?>">Pending<?php if ($pending_count > 0): ?><span class="nav-badge"><?php echo $pending_count; ?></span><?php endif; ?></a>
     <a href="messages.php?tab=messages">Messages<?php if ($message_unread > 0): ?><span class="nav-badge"><?php echo $message_unread; ?></span><?php endif; ?></a>
     <a href="messages.php?tab=complaints">Complaints<?php if ($complaint_unread > 0): ?><span class="nav-badge"><?php echo $complaint_unread; ?></span><?php endif; ?></a>
     <a href="appointments_management.php">Appointments</a>
@@ -656,219 +739,260 @@ body {
 </div>
 
 <div class="owner-container">
-  <h1>Property Management</h1>
+  <h1><?php echo $filter == 'pending' ? 'Pending Tenant Approvals' : 'Property Management'; ?></h1>
 
   <?php if ($message): ?>
     <div class="message"><?php echo $message; ?></div>
   <?php endif; ?>
 
-  <div class="year-navigator">
-    <a href="?year=<?php echo $current_year - 1; ?>&filter=<?php echo $filter; ?>" class="year-btn">‹</a>
-    <span class="current-year"><?php echo $current_year; ?></span>
-    <a href="?year=<?php echo $current_year + 1; ?>&filter=<?php echo $filter; ?>" class="year-btn">›</a>
-  </div>
+  <?php if ($filter == 'pending'): ?>
 
-  <div class="dashboard-layout">
-    <div class="table-area">
+    <?php if (empty($allTenants)): ?>
+      <div class="pending-empty">No pending tenant signups right now.</div>
+    <?php else: ?>
+      <table class="excel-table">
+        <thead>
+          <tr>
+            <th>Account Name</th>
+            <th>Room</th>
+            <th>Signed Up</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($allTenants as $tenant): ?>
+            <tr>
+              <td class="tenant-name-cell"><?php echo htmlspecialchars($tenant['username']); ?></td>
+              <td><?php echo htmlspecialchars($tenant['room_number'] ?? '—'); ?></td>
+              <td><?php echo date('M j, Y g:i A', strtotime($tenant['created_at'])); ?></td>
+              <td>
+                <button class="pending-action approve"
+                        onclick="confirmTenantAction(<?php echo (int)$tenant['id']; ?>, 'approve', '<?php echo htmlspecialchars($tenant['username']); ?>', '<?php echo htmlspecialchars($tenant['room_number'] ?? ''); ?>')">
+                  ✓ Approve
+                </button>
+                <button class="pending-action decline"
+                        onclick="confirmTenantAction(<?php echo (int)$tenant['id']; ?>, 'decline', '<?php echo htmlspecialchars($tenant['username']); ?>', '<?php echo htmlspecialchars($tenant['room_number'] ?? ''); ?>')">
+                  ✕ Decline
+                </button>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    <?php endif; ?>
 
-      <div class="room-section">
-        <div class="room-title">Rooms A1 – A7 <?php echo $filter == 'inactive' ? '· Inactive' : ''; ?></div>
-        <?php for ($i = 1; $i <= 7; $i++): 
-          $room = "A$i";
-          $roomTenants = isset($tenantsByRoom[$room]) ? $tenantsByRoom[$room] : [];
-          $roomData = isset($roomsData[$room]) ? $roomsData[$room] : null;
-          $maxCapacity = $roomData ? $roomData['max_occupancy'] : 4;
-          $hasTenants = !empty($roomTenants);
-        ?>
-          <table class="excel-table">
-            <thead>
-              <tr>
-                <th rowspan="2"><?php echo $room; ?></th>
-                <th colspan="12"><?php echo $current_year; ?></th>
-                <th rowspan="2">Action</th>
-              </tr>
-              <tr>
-                <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
-                <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php if ($hasTenants): ?>
-                <?php foreach ($roomTenants as $tenant): 
-                  $tenant_created_month = date('n', strtotime($tenant['created_at']));
-                  $tenant_created_year = date('Y', strtotime($tenant['created_at']));
-                  $tenant_balance = getTenantBalance($tenant['id'], $current_year);
-                ?>
-                  <tr>
-                    <td class="tenant-name-cell">
-                      <?php echo htmlspecialchars($tenant['username']); ?>
-                      <?php if ($tenant_balance > 0): ?><br><span class="balance-badge">Balance ₱<?php echo number_format($tenant_balance, 0); ?></span><?php endif; ?>
-                    </td>
-                    <?php for ($month = 1; $month <= 12; $month++): 
-                      $paymentStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
-                      $status = 'empty';
-                      if ($current_year > $currentYear) $status = 'empty';
-                      elseif ($current_year < $currentYear) {
-                        if ($tenant_created_year > $current_year) $status = 'empty';
-                        elseif ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
-                        else $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
-                      } else {
-                        if ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
-                        elseif ($month < $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
-                        elseif ($month == $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'pending');
-                        else $status = 'empty';
-                      }
-                    ?>
-                      <td class="<?php echo getStatusClass($status); ?> payment-cell <?php echo $status == 'empty' ? 'payment-empty' : ''; ?>" 
-                        <?php if ($status != 'empty'): ?>onclick="showPaymentDetails(<?php echo $tenant['id']; ?>, <?php echo $month; ?>, <?php echo $current_year; ?>, '<?php echo $status; ?>', '<?php echo htmlspecialchars($tenant['username']); ?>')"<?php endif; ?>>
-                        <?php echo getStatusText($status); ?>
-                      </td>
-                    <?php endfor; ?>
-                    <td>
-                      <?php if ($tenant['tenant_status'] == 'active'): ?>
-                        <a href="?set_inactive=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Move to inactive?')" class="action-link" style="color:var(--clay);" title="Mark Inactive">✕</a>
-                      <?php else: ?>
-                        <a href="?set_active=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Reactivate?')" class="action-link" style="color:var(--brass);" title="Reactivate">↻</a>
-                      <?php endif; ?>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-                <tr class="room-total-row">
-                  <td>Collected</td>
-                  <?php for ($month = 1; $month <= 12; $month++): 
-                    $monthTotal = 0;
-                    foreach ($roomTenants as $tenant) {
-                      $pStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
-                      if ($pStatus == 'verified' || $pStatus == 'partial') {
-                        $monthTotal += floatval($payments[$tenant['id']][$month]['amount_paid'] ?? 0);
-                      }
-                    }
-                  ?>
-                    <td class="total-value">₱<?php echo number_format($monthTotal, 0); ?></td>
-                  <?php endfor; ?>
-                  <td class="capacity-cell capacity-locked" title="Cannot change — tenants occupy this room">
-                    <?php echo $maxCapacity; ?>
-                    <span class="lock-icon">🔒</span>
-                  </td>
-                </tr>
-              <?php else: ?>
-                <tr>
-                  <td colspan="14" style="padding:24px;color:var(--ink-soft);font-style:italic;">
-                    No <?php echo $filter == 'inactive' ? 'inactive' : ''; ?> tenants — available for rent (up to <?php echo $maxCapacity; ?> persons)
-                  </td>
-                </tr>
-                <tr class="room-total-row">
-                  <td colspan="13" style="text-align:right;padding-right:14px;">Change capacity:</td>
-                  <td class="capacity-cell capacity-clickable" onclick="openModal('<?php echo $room; ?>', <?php echo $maxCapacity; ?>)" title="Click to change capacity">
-                    <?php echo $maxCapacity; ?> 👥
-                  </td>
-                </tr>
-              <?php endif; ?>
-            </tbody>
-          </table>
-        <?php endfor; ?>
-      </div>
+  <?php else: ?>
 
-      <div class="room-section">
-        <div class="room-title">Rooms B1 – B7 <?php echo $filter == 'inactive' ? '· Inactive' : ''; ?></div>
-        <?php for ($i = 1; $i <= 7; $i++): 
-          $room = "B$i";
-          $roomTenants = isset($tenantsByRoom[$room]) ? $tenantsByRoom[$room] : [];
-          $roomData = isset($roomsData[$room]) ? $roomsData[$room] : null;
-          $maxCapacity = $roomData ? $roomData['max_occupancy'] : 4;
-          $hasTenants = !empty($roomTenants);
-        ?>
-          <table class="excel-table">
-            <thead>
-              <tr>
-                <th rowspan="2"><?php echo $room; ?></th>
-                <th colspan="12"><?php echo $current_year; ?></th>
-                <th rowspan="2">Action</th>
-              </tr>
-              <tr>
-                <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
-                <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php if ($hasTenants): ?>
-                <?php foreach ($roomTenants as $tenant): 
-                  $tenant_created_month = date('n', strtotime($tenant['created_at']));
-                  $tenant_created_year = date('Y', strtotime($tenant['created_at']));
-                  $tenant_balance = getTenantBalance($tenant['id'], $current_year);
-                ?>
-                  <tr>
-                    <td class="tenant-name-cell">
-                      <?php echo htmlspecialchars($tenant['username']); ?>
-                      <?php if ($tenant_balance > 0): ?><br><span class="balance-badge">Balance ₱<?php echo number_format($tenant_balance, 0); ?></span><?php endif; ?>
-                    </td>
-                    <?php for ($month = 1; $month <= 12; $month++): 
-                      $paymentStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
-                      $status = 'empty';
-                      if ($current_year > $currentYear) $status = 'empty';
-                      elseif ($current_year < $currentYear) {
-                        if ($tenant_created_year > $current_year) $status = 'empty';
-                        elseif ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
-                        else $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
-                      } else {
-                        if ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
-                        elseif ($month < $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
-                        elseif ($month == $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'pending');
-                        else $status = 'empty';
-                      }
-                    ?>
-                      <td class="<?php echo getStatusClass($status); ?> payment-cell <?php echo $status == 'empty' ? 'payment-empty' : ''; ?>" 
-                        <?php if ($status != 'empty'): ?>onclick="showPaymentDetails(<?php echo $tenant['id']; ?>, <?php echo $month; ?>, <?php echo $current_year; ?>, '<?php echo $status; ?>', '<?php echo htmlspecialchars($tenant['username']); ?>')"<?php endif; ?>>
-                        <?php echo getStatusText($status); ?>
-                      </td>
-                    <?php endfor; ?>
-                    <td>
-                      <?php if ($tenant['tenant_status'] == 'active'): ?>
-                        <a href="?set_inactive=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Move to inactive?')" class="action-link" style="color:var(--clay);" title="Mark Inactive">✕</a>
-                      <?php else: ?>
-                        <a href="?set_active=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Reactivate?')" class="action-link" style="color:var(--brass);" title="Reactivate">↻</a>
-                      <?php endif; ?>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-                <tr class="room-total-row">
-                  <td>Collected</td>
-                  <?php for ($month = 1; $month <= 12; $month++): 
-                    $monthTotal = 0;
-                    foreach ($roomTenants as $tenant) {
-                      $pStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
-                      if ($pStatus == 'verified' || $pStatus == 'partial') {
-                        $monthTotal += floatval($payments[$tenant['id']][$month]['amount_paid'] ?? 0);
-                      }
-                    }
-                  ?>
-                    <td class="total-value">₱<?php echo number_format($monthTotal, 0); ?></td>
-                  <?php endfor; ?>
-                  <td class="capacity-cell capacity-locked" title="Cannot change — tenants occupy this room">
-                    <?php echo $maxCapacity; ?>
-                    <span class="lock-icon">🔒</span>
-                  </td>
-                </tr>
-              <?php else: ?>
-                <tr>
-                  <td colspan="14" style="padding:24px;color:var(--ink-soft);font-style:italic;">
-                    No <?php echo $filter == 'inactive' ? 'inactive' : ''; ?> tenants — available for rent (up to <?php echo $maxCapacity; ?> persons)
-                  </td>
-                </tr>
-                <tr class="room-total-row">
-                  <td colspan="13" style="text-align:right;padding-right:14px;">Change capacity:</td>
-                  <td class="capacity-cell capacity-clickable" onclick="openModal('<?php echo $room; ?>', <?php echo $maxCapacity; ?>)" title="Click to change capacity">
-                    <?php echo $maxCapacity; ?> 👥
-                  </td>
-                </tr>
-              <?php endif; ?>
-            </tbody>
-          </table>
-        <?php endfor; ?>
-      </div>
-
+    <div class="year-navigator">
+      <a href="?year=<?php echo $current_year - 1; ?>&filter=<?php echo $filter; ?>" class="year-btn">‹</a>
+      <span class="current-year"><?php echo $current_year; ?></span>
+      <a href="?year=<?php echo $current_year + 1; ?>&filter=<?php echo $filter; ?>" class="year-btn">›</a>
     </div>
-  </div>
+
+    <div class="dashboard-layout">
+      <div class="table-area">
+
+        <div class="room-section">
+          <div class="room-title">Rooms A1 – A7 <?php echo $filter == 'inactive' ? '· Inactive' : ''; ?></div>
+          <?php for ($i = 1; $i <= 7; $i++): 
+            $room = "A$i";
+            $roomTenants = isset($tenantsByRoom[$room]) ? $tenantsByRoom[$room] : [];
+            $roomData = isset($roomsData[$room]) ? $roomsData[$room] : null;
+            $maxCapacity = $roomData ? $roomData['max_occupancy'] : 4;
+            $hasTenants = !empty($roomTenants);
+          ?>
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th rowspan="2"><?php echo $room; ?></th>
+                  <th colspan="12"><?php echo $current_year; ?></th>
+                  <th rowspan="2">Action</th>
+                </tr>
+                <tr>
+                  <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
+                  <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if ($hasTenants): ?>
+                  <?php foreach ($roomTenants as $tenant): 
+                    $tenant_created_month = date('n', strtotime($tenant['created_at']));
+                    $tenant_created_year = date('Y', strtotime($tenant['created_at']));
+                    $tenant_balance = getTenantBalance($tenant['id'], $current_year);
+                  ?>
+                    <tr>
+                      <td class="tenant-name-cell">
+                        <?php echo htmlspecialchars($tenant['username']); ?>
+                        <?php if ($tenant_balance > 0): ?><br><span class="balance-badge">Balance ₱<?php echo number_format($tenant_balance, 0); ?></span><?php endif; ?>
+                      </td>
+                      <?php for ($month = 1; $month <= 12; $month++): 
+                        $paymentStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
+                        $status = 'empty';
+                        if ($current_year > $currentYear) $status = 'empty';
+                        elseif ($current_year < $currentYear) {
+                          if ($tenant_created_year > $current_year) $status = 'empty';
+                          elseif ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
+                          else $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
+                        } else {
+                          if ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
+                          elseif ($month < $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
+                          elseif ($month == $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'pending');
+                          else $status = 'empty';
+                        }
+                      ?>
+                        <td class="<?php echo getStatusClass($status); ?> payment-cell <?php echo $status == 'empty' ? 'payment-empty' : ''; ?>" 
+                          <?php if ($status != 'empty'): ?>onclick="showPaymentDetails(<?php echo $tenant['id']; ?>, <?php echo $month; ?>, <?php echo $current_year; ?>, '<?php echo $status; ?>', '<?php echo htmlspecialchars($tenant['username']); ?>')"<?php endif; ?>>
+                          <?php echo getStatusText($status); ?>
+                        </td>
+                      <?php endfor; ?>
+                      <td>
+                        <?php if ($tenant['tenant_status'] == 'active'): ?>
+                          <a href="?set_inactive=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Move to inactive?')" class="action-link" style="color:var(--clay);" title="Mark Inactive">✕</a>
+                        <?php else: ?>
+                          <a href="?set_active=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Reactivate?')" class="action-link" style="color:var(--brass);" title="Reactivate">↻</a>
+                        <?php endif; ?>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <tr class="room-total-row">
+                    <td>Collected</td>
+                    <?php for ($month = 1; $month <= 12; $month++): 
+                      $monthTotal = 0;
+                      foreach ($roomTenants as $tenant) {
+                        $pStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
+                        if ($pStatus == 'verified' || $pStatus == 'partial') {
+                          $monthTotal += floatval($payments[$tenant['id']][$month]['amount_paid'] ?? 0);
+                        }
+                      }
+                    ?>
+                      <td class="total-value">₱<?php echo number_format($monthTotal, 0); ?></td>
+                    <?php endfor; ?>
+                    <td class="capacity-cell capacity-locked" title="Cannot change — tenants occupy this room">
+                      <?php echo $maxCapacity; ?>
+                      <span class="lock-icon">🔒</span>
+                    </td>
+                  </tr>
+                <?php else: ?>
+                  <tr>
+                    <td colspan="14" style="padding:24px;color:var(--ink-soft);font-style:italic;">
+                      No <?php echo $filter == 'inactive' ? 'inactive' : ''; ?> tenants — available for rent (up to <?php echo $maxCapacity; ?> persons)
+                    </td>
+                  </tr>
+                  <tr class="room-total-row">
+                    <td colspan="13" style="text-align:right;padding-right:14px;">Change capacity:</td>
+                    <td class="capacity-cell capacity-clickable" onclick="openModal('<?php echo $room; ?>', <?php echo $maxCapacity; ?>)" title="Click to change capacity">
+                      <?php echo $maxCapacity; ?> 👥
+                    </td>
+                  </tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          <?php endfor; ?>
+        </div>
+
+        <div class="room-section">
+          <div class="room-title">Rooms B1 – B7 <?php echo $filter == 'inactive' ? '· Inactive' : ''; ?></div>
+          <?php for ($i = 1; $i <= 7; $i++): 
+            $room = "B$i";
+            $roomTenants = isset($tenantsByRoom[$room]) ? $tenantsByRoom[$room] : [];
+            $roomData = isset($roomsData[$room]) ? $roomsData[$room] : null;
+            $maxCapacity = $roomData ? $roomData['max_occupancy'] : 4;
+            $hasTenants = !empty($roomTenants);
+          ?>
+            <table class="excel-table">
+              <thead>
+                <tr>
+                  <th rowspan="2"><?php echo $room; ?></th>
+                  <th colspan="12"><?php echo $current_year; ?></th>
+                  <th rowspan="2">Action</th>
+                </tr>
+                <tr>
+                  <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
+                  <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if ($hasTenants): ?>
+                  <?php foreach ($roomTenants as $tenant): 
+                    $tenant_created_month = date('n', strtotime($tenant['created_at']));
+                    $tenant_created_year = date('Y', strtotime($tenant['created_at']));
+                    $tenant_balance = getTenantBalance($tenant['id'], $current_year);
+                  ?>
+                    <tr>
+                      <td class="tenant-name-cell">
+                        <?php echo htmlspecialchars($tenant['username']); ?>
+                        <?php if ($tenant_balance > 0): ?><br><span class="balance-badge">Balance ₱<?php echo number_format($tenant_balance, 0); ?></span><?php endif; ?>
+                      </td>
+                      <?php for ($month = 1; $month <= 12; $month++): 
+                        $paymentStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
+                        $status = 'empty';
+                        if ($current_year > $currentYear) $status = 'empty';
+                        elseif ($current_year < $currentYear) {
+                          if ($tenant_created_year > $current_year) $status = 'empty';
+                          elseif ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
+                          else $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
+                        } else {
+                          if ($tenant_created_year == $current_year && $month < $tenant_created_month) $status = 'empty';
+                          elseif ($month < $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'overdue');
+                          elseif ($month == $currentMonth) $status = $paymentStatus == 'verified' ? 'verified' : ($paymentStatus == 'partial' ? 'partial' : 'pending');
+                          else $status = 'empty';
+                        }
+                      ?>
+                        <td class="<?php echo getStatusClass($status); ?> payment-cell <?php echo $status == 'empty' ? 'payment-empty' : ''; ?>" 
+                          <?php if ($status != 'empty'): ?>onclick="showPaymentDetails(<?php echo $tenant['id']; ?>, <?php echo $month; ?>, <?php echo $current_year; ?>, '<?php echo $status; ?>', '<?php echo htmlspecialchars($tenant['username']); ?>')"<?php endif; ?>>
+                          <?php echo getStatusText($status); ?>
+                        </td>
+                      <?php endfor; ?>
+                      <td>
+                        <?php if ($tenant['tenant_status'] == 'active'): ?>
+                          <a href="?set_inactive=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Move to inactive?')" class="action-link" style="color:var(--clay);" title="Mark Inactive">✕</a>
+                        <?php else: ?>
+                          <a href="?set_active=<?php echo $tenant['id']; ?>&year=<?php echo $current_year; ?>&filter=<?php echo $filter; ?>&token=<?php echo csrf_token(); ?>" onclick="return confirm('Reactivate?')" class="action-link" style="color:var(--brass);" title="Reactivate">↻</a>
+                        <?php endif; ?>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <tr class="room-total-row">
+                    <td>Collected</td>
+                    <?php for ($month = 1; $month <= 12; $month++): 
+                      $monthTotal = 0;
+                      foreach ($roomTenants as $tenant) {
+                        $pStatus = isset($payments[$tenant['id']][$month]) ? $payments[$tenant['id']][$month]['status'] : 'empty';
+                        if ($pStatus == 'verified' || $pStatus == 'partial') {
+                          $monthTotal += floatval($payments[$tenant['id']][$month]['amount_paid'] ?? 0);
+                        }
+                      }
+                    ?>
+                      <td class="total-value">₱<?php echo number_format($monthTotal, 0); ?></td>
+                    <?php endfor; ?>
+                    <td class="capacity-cell capacity-locked" title="Cannot change — tenants occupy this room">
+                      <?php echo $maxCapacity; ?>
+                      <span class="lock-icon">🔒</span>
+                    </td>
+                  </tr>
+                <?php else: ?>
+                  <tr>
+                    <td colspan="14" style="padding:24px;color:var(--ink-soft);font-style:italic;">
+                      No <?php echo $filter == 'inactive' ? 'inactive' : ''; ?> tenants — available for rent (up to <?php echo $maxCapacity; ?> persons)
+                    </td>
+                  </tr>
+                  <tr class="room-total-row">
+                    <td colspan="13" style="text-align:right;padding-right:14px;">Change capacity:</td>
+                    <td class="capacity-cell capacity-clickable" onclick="openModal('<?php echo $room; ?>', <?php echo $maxCapacity; ?>)" title="Click to change capacity">
+                      <?php echo $maxCapacity; ?> 👥
+                    </td>
+                  </tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          <?php endfor; ?>
+        </div>
+
+      </div>
+    </div>
+
+  <?php endif; ?>
+
 </div>
 
 <script>
@@ -1017,7 +1141,47 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeModal();
     closePaymentModal();
+    closeTenantModal();
   }
+});
+
+function confirmTenantAction(userId, action, username, room) {
+  const modal = document.getElementById('tenantActionModal');
+  const title = document.getElementById('tenantActionTitle');
+  const sub = document.getElementById('tenantActionSub');
+  const body = document.getElementById('tenantActionBody');
+  const uid = document.getElementById('tenantActionUserId');
+  const submit = document.getElementById('tenantActionSubmit');
+
+  uid.value = userId;
+
+  if (action === 'approve') {
+    title.textContent = 'Approve Tenant?';
+    sub.innerHTML = '<strong>' + username + '</strong>' + (room ? ' · Room ' + room : '');
+    body.innerHTML = 'This tenant will be activated and given full access to their dashboard.<br><br>They will be able to log in immediately.';
+    submit.textContent = 'Approve';
+    submit.className = 'modal-save';
+    submit.name = 'approve_tenant';
+    submit.value = '1';
+  } else {
+    title.textContent = 'Decline Tenant?';
+    sub.innerHTML = '<strong>' + username + '</strong>' + (room ? ' · Room ' + room : '');
+    body.innerHTML = 'This signup will be declined.<br><br>The account will not be able to log in. This action cannot be undone from this dashboard.';
+    submit.textContent = 'Decline';
+    submit.className = 'modal-save decline';
+    submit.name = 'decline_tenant';
+    submit.value = '1';
+  }
+
+  modal.classList.add('active');
+}
+
+function closeTenantModal() {
+  document.getElementById('tenantActionModal').classList.remove('active');
+}
+
+document.getElementById('tenantActionModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTenantModal();
 });
 </script>
 
