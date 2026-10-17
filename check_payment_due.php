@@ -26,8 +26,46 @@ $stmt = $pdo->query("SELECT * FROM users WHERE role = 'tenant' AND is_deleted = 
 $tenants = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $sent = 0;
+$autoInactivated = 0;
 
 foreach ($tenants as $tenant) {
+
+    // ------------------------------------------------------------
+    // STEP 1: Auto-inactivate tenants with 3+ unpaid/partial months
+    // ------------------------------------------------------------
+    if ($tenant['tenant_status'] === 'active') {
+        $unpaidStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM payments
+             WHERE user_id = ?
+               AND year = ?
+               AND (
+                   status IN ('partial', 'overdue')
+                   OR (status = 'pending' AND month < ?)
+               )"
+        );
+        $unpaidStmt->execute([$tenant['id'], $currentYear, $currentMonth]);
+        $unpaidMonths = (int) $unpaidStmt->fetchColumn();
+
+        if ($unpaidMonths >= 3) {
+            $upd = $pdo->prepare(
+                "UPDATE users
+                 SET tenant_status = 'inactive', left_date = CURDATE()
+                 WHERE id = ?"
+            );
+            $upd->execute([$tenant['id']]);
+
+            echo "🛑 Auto-inactivated {$tenant['email']} ({$unpaidMonths} unpaid months)\n";
+            $autoInactivated++;
+            continue; // stop processing this tenant
+        }
+    }
+
+    // ------------------------------------------------------------
+    // STEP 2: Send reminders (skip inactive/declined/pending tenants)
+    // ------------------------------------------------------------
+    if ($tenant['tenant_status'] !== 'active') {
+        continue;
+    }
 
     if (empty($tenant['telegram_chat_id'])) {
         continue;
@@ -42,7 +80,6 @@ foreach ($tenants as $tenant) {
 
     $currentStatus = $currentPayment['status'] ?? 'unpaid';
 
-    // Verified or partial → skip this month
     if ($currentStatus === 'verified' || $currentStatus === 'partial') {
         continue;
     }
@@ -56,7 +93,7 @@ foreach ($tenants as $tenant) {
 
     $thisMonthAmount = ($room ? floatval($room['price_option']) : 1500) + 300 + 500 + 200;
 
-    // Carryover from any previous unpaid month this year
+    // Carryover from previous unpaid months
     $stmt4 = $pdo->prepare(
         "SELECT SUM(balance) AS prev_balance
          FROM payments
@@ -70,9 +107,7 @@ foreach ($tenants as $tenant) {
 
     $totalDue = $thisMonthAmount + $prevBalance;
 
-    // ============================================
     // TEST MODE
-    // ============================================
     if (isset($_GET['test']) && $_GET['test'] === 'due') {
         notifyPaymentDue($tenant['id'], $totalDue, date('F j, Y'));
         echo "✅ [TEST] Sent DUE ₱{$totalDue} to {$tenant['email']}\n";
@@ -80,14 +115,11 @@ foreach ($tenants as $tenant) {
         continue;
     }
 
-    // ============================================
     // PRODUCTION REMINDER SCHEDULE
-    // ============================================
     $shouldSend = false;
     $reason = '';
 
     if ($today < 10) {
-        // Start 5 days before due date, then daily
         if ($daysLeft <= 5) {
             $shouldSend = true;
             $reason = 'due-soon';
@@ -96,7 +128,6 @@ foreach ($tenants as $tenant) {
         $shouldSend = true;
         $reason = 'due-today';
     } else {
-        // Overdue → every 2 days (11, 13, 15...)
         if (($today - 10) % 2 === 1) {
             $shouldSend = true;
             $reason = 'overdue';
@@ -116,4 +147,5 @@ foreach ($tenants as $tenant) {
     }
 }
 
-echo "\n✅ Total notifications sent: $sent\n";
+echo "\n✅ Total reminders sent: $sent\n";
+echo "🛑 Total auto-inactivated: $autoInactivated\n";
