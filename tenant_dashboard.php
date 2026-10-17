@@ -83,12 +83,14 @@ if (isset($_POST['upload_receipt'])) {
     if (isset($_FILES['receipt']) && $_FILES['receipt']['error'] == 0) {
         $file_extension = strtolower(pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION));
 
-        if ($file_extension !== 'png') {
+        if (!in_array($file_extension, ['png', 'jpg', 'jpeg'], true)) {
             header("Location: tenant_dashboard.php?year=$current_year&msg=invalid_format");
             exit();
         }
 
-        $filename = 'receipt_' . $user_id . '_' . $year . '_' . $month . '_' . time() . '.png';
+        $mime_type = ($file_extension === 'png') ? 'image/png' : 'image/jpeg';
+
+        $filename = 'receipt_' . $user_id . '_' . $year . '_' . $month . '_' . time() . '.' . $file_extension;
         $supabase_url = rtrim(env('SUPABASE_URL', ''), '/');
         $supabase_key = env('SUPABASE_SERVICE_KEY', '');
 
@@ -107,7 +109,8 @@ if (isset($_POST['upload_receipt'])) {
             CURLOPT_TIMEOUT => 30,
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $supabase_key,
-                'Content-Type: image/png',
+                'apikey: ' . $supabase_key,
+                'Content-Type: ' . $mime_type,
                 'x-upsert: true',
             ],
         ]);
@@ -204,7 +207,7 @@ if (isset($_GET['msg'])) {
     if ($_GET['msg'] == 'message_sent') $message = '✅ Message sent to owner';
     if ($_GET['msg'] == 'complaint_filed') $message = '✅ Complaint filed successfully';
     if ($_GET['msg'] == 'locked') $message = '🔒 This month is verified and cannot be changed';
-    if ($_GET['msg'] == 'invalid_format') $message = '❌ Only PNG files are allowed';
+    if ($_GET['msg'] == 'invalid_format') $message = '❌ Only PNG or JPG files are allowed';
     if ($_GET['msg'] == 'storage_error') $message = '❌ Upload failed. Please try again.';
 }
 ?>
@@ -889,10 +892,10 @@ body {
         <form method="POST" enctype="multipart/form-data" id="uploadForm">
           <div class="upload-area" id="uploadArea" onclick="triggerFilePick()">
             <span class="upload-icon" id="uploadIcon">📷</span>
-            <span class="upload-text" id="uploadText">Click to upload GCash/Bank Receipt (PNG only)</span>
+            <span class="upload-text" id="uploadText">Click to upload GCash/Bank Receipt (PNG or JPG)</span>
             <img id="uploadPreview" alt="Preview">
           </div>
-          <input type="file" id="receiptFile" name="receipt" style="display: none;" accept="image/png" onchange="showFileName()">
+          <input type="file" id="receiptFile" name="receipt" style="display: none;" accept="image/png,image/jpeg" onchange="showFileName()">
           <input type="hidden" name="month" id="upload_form_month" value="<?php echo $currentMonth; ?>">
           <input type="hidden" name="year" id="upload_form_year" value="<?php echo $currentYear; ?>">
           <button type="submit" name="upload_receipt" class="upload-btn" id="uploadBtn">📤 UPLOAD RECEIPT</button>
@@ -1081,7 +1084,7 @@ function updateUploadUI() {
     document.getElementById('uploadText').style.display = 'inline';
     document.getElementById('uploadPreview').style.display = 'none';
     document.getElementById('uploadPreview').src = '';
-    document.getElementById('uploadText').textContent = 'Click to upload GCash/Bank Receipt (PNG only)';
+    document.getElementById('uploadText').textContent = 'Click to upload GCash/Bank Receipt (PNG or JPG)';
     
     const status = paymentStatuses[uploadMonth] || 'pending';
     const badge = document.getElementById('statusBadge');
