@@ -71,6 +71,22 @@ unset($room);
 <link rel="stylesheet" href="assets/css/HStyle.css">
 
 <style>
+/* ===== MOBILE-FIRST OVERRIDES ===== */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+img, iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Hero */
 .hero {
   background:
     linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.75) 100%),
@@ -84,6 +100,14 @@ unset($room);
   padding: 120px 24px 100px;
 }
 
+@media (max-width: 768px) {
+  .hero {
+    min-height: 70vh;
+    padding: 80px 20px 60px;
+    background-attachment: scroll !important;
+  }
+}
+
 /* Room Availability */
 .room-availability {
     background: #F6F1E6;
@@ -95,18 +119,21 @@ unset($room);
     text-align: center;
     max-width: 650px;
     margin: 0 auto 45px;
+    padding: 0 8px;
 }
 
 .room-availability .section-heading h2 {
     font-family: var(--font-display);
-    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-size: clamp(1.6rem, 5vw, 2.8rem);
     font-weight: 300;
     margin: 18px 0;
+    word-wrap: break-word;
 }
 
 .room-availability .section-heading p {
     color: #6B5D4C;
     line-height: 1.7;
+    font-size: 0.95rem;
 }
 
 .room-grid {
@@ -195,6 +222,7 @@ unset($room);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     transition: 0.2s ease;
+    text-align: center;
 }
 
 .room-book-btn:hover {
@@ -219,25 +247,214 @@ unset($room);
     color: #6B5D4C;
     font-size: 0.82rem;
     margin-bottom: 20px;
+    padding: 0 8px;
 }
 
+/* Tablet */
 @media (max-width: 1000px) {
     .room-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
-@media (max-width: 500px) {
+/* Mobile */
+@media (max-width: 600px) {
     .room-availability {
-        padding: 60px 18px;
+        padding: 50px 14px;
     }
 
     .room-grid {
         grid-template-columns: 1fr;
+        gap: 16px;
     }
 
     .room-card {
-        padding: 25px 20px;
+        padding: 22px 18px;
+    }
+
+    .room-price {
+        font-size: 1.5rem;
+    }
+}
+
+/* ===== FORCE global mobile fixes ===== */
+@media (max-width: 768px) {
+    /* Header / nav */
+    header .header-inner {
+        flex-wrap: wrap;
+        padding: 12px 16px !important;
+        gap: 10px;
+    }
+
+    header .brand-text {
+        font-size: 0.8rem !important;
+        letter-spacing: 0.14em !important;
+    }
+
+    header nav {
+        display: none; /* hide nav links on mobile until menu is tapped */
+    }
+
+    header .nav-cta {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+    }
+
+    header .nav-cta .btn,
+    header .nav-cta .btn-ghost {
+        padding: 8px 14px;
+        font-size: 0.7rem;
+        letter-spacing: 0.1em;
+    }
+
+    /* Hero text sizes */
+    .hero h1 {
+        font-size: clamp(1.8rem, 7vw, 2.6rem) !important;
+        line-height: 1.15;
+        word-wrap: break-word;
+    }
+
+    .hero p {
+        font-size: 0.95rem;
+        padding: 0 8px;
+        line-height: 1.5;
+    }
+
+    /* Every section: reduce big padding */
+    .section {
+        padding: 50px 16px !important;
+    }
+
+    .wrap {
+        padding: 0 6px !important;
+        max-width: 100% !important;
+    }
+
+    /* About grid becomes single column */
+    .about-grid,
+    .location-grid {
+        display: block !important;
+    }
+
+    .about-grid > *,
+    .location-grid > * {
+        width: 100% !important;
+        margin-bottom: 24px;
+    }
+
+    /* Amenities: stack */
+    .amenities {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    /* Photo slider: full width, safe height */
+    .photo-frame {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto;
+    }
+
+    .photo-slider img,
+    .photo-slide {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 320px;
+        object-fit: cover;
+    }
+
+    /* Rules pager: bigger tap targets */
+    .rule-pager {
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 0 8px;
+    }
+
+    .rule-display {
+        width: 100% !important;
+        padding: 20px 16px !important;
+    }
+
+    .rule-display p {
+        font-size: 0.95rem !important;
+        line-height: 1.6;
+    }
+
+    /* CTA band */
+    .cta-band {
+        padding: 50px 18px !important;
+        text-align: center;
+    }
+
+    .cta-band h2 {
+        font-size: clamp(1.4rem, 6vw, 2rem) !important;
+        word-wrap: break-word;
+    }
+
+    /* Footer */
+    .footer-grid {
+        display: block !important;
+    }
+
+    .footer-grid > * {
+        width: 100% !important;
+        margin-bottom: 24px;
+    }
+
+    .footer-bottom {
+        flex-direction: column;
+        gap: 6px;
+        text-align: center;
+        font-size: 0.75rem;
+    }
+
+    /* Location map: full width */
+    .map-frame {
+        width: 100% !important;
+        height: 260px !important;
+    }
+
+    .map-frame iframe {
+        width: 100% !important;
+        height: 260px !important;
+    }
+
+    /* Buttons: full width on mobile */
+    .hero .btn,
+    .cta-band .btn,
+    .section-cta .btn {
+        width: 100%;
+        max-width: 320px;
+        margin: 8px auto 0;
+        text-align: center;
+        display: inline-block;
+    }
+
+    /* Address text */
+    .address {
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+}
+
+/* Extra small phones */
+@media (max-width: 380px) {
+    header .brand-text {
+        font-size: 0.7rem !important;
+    }
+
+    .hero h1 {
+        font-size: 1.6rem !important;
+    }
+
+    .room-card {
+        padding: 18px 14px;
+    }
+
+    .room-price {
+        font-size: 1.3rem;
     }
 }
 </style>
@@ -290,7 +507,7 @@ unset($room);
     <div class="about-grid">
       <div class="about-copy">
         <p class="eyebrow">About Us</p>
-        <h2 style="font-family:var(--font-display); font-weight:300; font-size:clamp(1.8rem,4vw,2.8rem); line-height:1.1; margin:18px 0 28px;">Details about our Apartment</h2>
+        <h2 style="font-family:var(--font-display); font-weight:300; font-size:clamp(1.6rem,5vw,2.8rem); line-height:1.15; margin:18px 0 28px; word-wrap:break-word;">Details about our Apartment</h2>
         <p>Danielle's Apartment is a premium hybrid housing community located in the heart of Isulan, Sultan Kudarat. Designed specifically for students and professionals, our facility offers a perfect balance of comfort, security, and affordability.</p>
         <p>Our location at Kalawag 2, Capitol Centro puts you within minutes of schools, hospitals, the capitol building, and the public market. Whether you're studying or working, Danielle's Apartment provides a safe, peaceful, and convenient place to call home.</p>
         <p>Room rates start at ₱5,000 for solo occupancy, with discounted rates for shared rooms. Utilities are added to the total monthly cost. Experience modern living in Isulan. Your comfort is our priority.</p>
@@ -376,7 +593,7 @@ unset($room);
     <div class="location-grid">
       <div>
         <p class="eyebrow">Where to find us</p>
-        <h2 style="font-family:var(--font-display); font-weight:300; font-size:clamp(1.8rem,4vw,2.8rem); line-height:1.1; margin:18px 0 28px;">Just outside Isulan, easy to reach</h2>
+        <h2 style="font-family:var(--font-display); font-weight:300; font-size:clamp(1.6rem,5vw,2.8rem); line-height:1.15; margin:18px 0 28px; word-wrap:break-word;">Just outside Isulan, easy to reach</h2>
         <p>Located in a quiet and accessible area of Isulan, Sultan Kudarat — perfect for those who want peace and convenience combined.</p>
         <div class="address">
           Kalawag 2,<br>
